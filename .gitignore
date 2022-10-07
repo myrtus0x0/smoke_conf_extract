@@ -1,0 +1,8 @@
+*.bin
+*.json
+.vscode/
+venv/
+decompressed_payloads/
+total_samples/
+__pycache__/
+.DS_Store
