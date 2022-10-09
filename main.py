@@ -183,7 +183,7 @@ def main():
     with open(args.sample, "rb") as f:
         smokeloader_unpacked_pe = f.read()
     
-    emulator = unicorn_pe_loader.InitUnicorn(smokeloader_unpacked_pe, logger, args.sample, type_pe=True, bit=32, debug=False)
+    emulator = unicorn_pe_loader.InitUnicorn(smokeloader_unpacked_pe, logger, type_pe=True, bit=32, debug=False)
 
     deobfuscated_pe, xor_cookie = deobfuscate_unpacked_smokeloader(smokeloader_unpacked_pe, emulator, args.sample)
     if deobfuscated_pe is None:
@@ -200,9 +200,9 @@ def main():
         logger.error("unable to extract final stage")
         return
 
-    with open("./decompression_sample.bin", "rb") as f:
-        deocompress_client = f.read()
-    decompress_emulator = unicorn_pe_loader.InitUnicorn(deocompress_client, logger, "./smokeloader_unpacked.bin", type_pe=True, bit=32, debug=False)
+    with open("./decompress_client.pe_file", "rb") as f:
+        decompress_client = f.read()
+    decompress_emulator = unicorn_pe_loader.InitUnicorn(decompress_client, logger, type_pe=True, bit=32, debug=False)
 
     for payload in payloads:
         logger.info("decrypting extracted PE with key", key="0x%x" % xor_cookie, len_pe=len(payload))

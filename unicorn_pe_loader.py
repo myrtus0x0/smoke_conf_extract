@@ -11,7 +11,7 @@ IMAGE_FILE_MACHINE_I386 = 0x014c
 IMAGE_FILE_MACHINE_AMD64 = 0x8664
 
 class InitUnicorn(object):
-    def __init__(self, data, logger, pe_filepath, type_pe=False, bit=32, debug=False, data_addr=0xDEADBEEF00000000):
+    def __init__(self, data, logger, type_pe=False, bit=32, debug=False, data_addr=0xDEADBEEF00000000):
         self.logger = logger
         self.data_addr = data_addr
         self.data_size = 2 * 1024 * 1024 
