@@ -1,10 +1,12 @@
 # Smoke Config Extraction
 
-## Preview
-![](screenshots/overview.png)
-
 ## Overview
 This project aims to extrct configurations from smokeloader samples starting at the initial stage. I was set on doing this statically so had to rely on things like Unicorn to bypass some of the more complicated components. 
+
+Regardless of how this extraction works for this family, this repository can serve as an example for how config extraction might wokr for non traditional malware families
+
+## Preview
+![Overview](screenshots/overview.png)
 
 ## Features
 - deobfuscation
