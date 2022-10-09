@@ -1,12 +1,11 @@
 import argparse
-import binascii
 import collections
 import hashlib
+import json
 import logging
 import math
 import struct
 import sys
-import json
 
 import malduck
 import pefile
@@ -195,14 +194,6 @@ def main():
 
     with open(args.sample + "_fully_deobfuscated.bin", "wb") as f:
         f.write(deobfuscated_pe)
-
-    # cookies = conf_extract.get_xor_cookie(deobfuscated_pe)
-    # for cookie in cookies:
-    #     logger.info("potential xor key", xor_key="0x%x" % cookie)
-
-    # if len(cookies) > 1:
-    #     logger.error("too many decrypt candidates", xor_cookies=cookies)
-    #     return 
 
     payloads = get_payloads_from_stage_2(deobfuscated_pe, emulator, just_xored_pe)
     if len(payloads) == 0:

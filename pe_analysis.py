@@ -15,6 +15,7 @@ class PEAnalysis:
 
         return 
 
+
     def init_function_data(self):
         attempts = 10
         while True:
@@ -39,6 +40,7 @@ class PEAnalysis:
         
         return 
 
+
     def generate_xrefs(self, entry):
         xrefs = self.r2_rep.cmd("axtj @0x%x" % int(entry["offset"]))
         json_loaded_xrefs = json.loads(xrefs)
@@ -54,6 +56,7 @@ class PEAnalysis:
             xref_list.append(xref_data)
         
         return xref_list
+
 
     def get_xref_list(self, target_addr):
         xrefs = []
@@ -75,6 +78,7 @@ class PEAnalysis:
         
         return None, None
     
+
     def get_func_start(self, mem_addr):
         start_addrs = [x for x in self.json_data]
         start_addrs.sort()

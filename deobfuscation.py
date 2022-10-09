@@ -1,11 +1,13 @@
-import sys
-import re
-import pefile
-import pe_analysis
-import structlog
 import logging
+import re
 import struct
+import sys
+
 import malduck
+import pefile
+import structlog
+
+import pe_analysis
 
 
 def get_opaque_predicate_offsets(data, pe_rep):
@@ -39,6 +41,7 @@ def get_opaque_predicate_offsets(data, pe_rep):
     
     return offsets
 
+
 def get_args_from_decrypt_body_call(data):
     found_addr = get_code_offset_arg_from_decrypt_body_call(data)
     if found_addr is None:
@@ -49,6 +52,7 @@ def get_args_from_decrypt_body_call(data):
         return None, None
     
     return found_addr, size
+
 
 def get_code_offset_arg_from_decrypt_body_call(data):
     logger = structlog.get_logger(__name__)
@@ -122,6 +126,7 @@ def get_code_size_arg_from_decrypt_body_call(data, address):
                 logger.debug("4 byte size", size="0x%x" % size)
                 return size
 
+
 def replace_ops(data, opaque_predicate_info):
     for offset in opaque_predicate_info:
         file_offset = offset[0]
@@ -136,6 +141,7 @@ def replace_ops(data, opaque_predicate_info):
         data = data[:file_offset] + new_bytes + data[file_offset+len(new_bytes):]
         
     return data
+
 
 def find_body_decryptor(data):
      
@@ -160,6 +166,7 @@ def find_body_decryptor(data):
     
     return potential_decrypt_funcs
 
+
 def init_logger():
     renderer = structlog.dev.ConsoleRenderer()
     structlog.configure(
@@ -183,35 +190,9 @@ def init_logger():
     logging.basicConfig(format="%(message)s", stream=sys.stdout, level=logging.INFO)
     return
 
-def get_func_body_decrypt_key(cleaned_pe):
-
-    return 0xFE
-
 
 def bulk_decrypt_function_bodies(cleaned_pe, patched_filename, emulator):
     logger = structlog.get_logger(__name__)
-
-    hardcoded_calls = [
-        0x401200,
-        0x40128D,
-        0x4013B0,
-        0x401487,
-        0x401839,
-        0x4018DE,
-        0x401AC8,
-        0x401B50,
-        0x401C59,
-        0x401D6B,
-        0x401E28,
-        0x401EDF,
-        0x40214A,
-        0x402219,
-        0x4024EC,
-        0x4026C0,
-        0x402750,
-        0x40281C,
-        0x4028AA,
-    ]
 
     cleaned_pe_rep = pefile.PE(data=cleaned_pe)
 

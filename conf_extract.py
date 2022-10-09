@@ -1,12 +1,11 @@
-from random import sample
 import malduck
 import re
 import sys
 import struct
 import structlog
-import binascii
 
 shellcode_base_addr = 0x10000C00
+
 
 def extract_decrypt_key(stage_3_shellcode):
     decrypt_key_regex = (
@@ -26,6 +25,7 @@ def extract_decrypt_key(stage_3_shellcode):
     
     return keys
 
+
 def extract_encrypt_key(stage_3_shellcode):
     encrypt_key_regex = (
         rb"\xc7.{6}(?P<encrypt_key>.{4})" #         seg000:100034E0 C7 84 24 8C 00 00 00 D2 F0 F8 33   mov     [esp+7Ch+arg_C], 33F8F0D2h
@@ -41,6 +41,7 @@ def extract_encrypt_key(stage_3_shellcode):
         keys.append(potential_key)
     
     return keys
+
 
 def extract_c2_buffers(stage_3_shellcode):
     ptr_c2_list_regex = (
@@ -74,6 +75,7 @@ def extract_c2_buffers(stage_3_shellcode):
 
     return c2s
 
+
 def get_xor_cookie(sample_data:bytearray):
     decrypt_pe_regex = (
         rb"\xba(?P<xor_cookie>.{4})"    # .text:00401205 BA FE 08 40 60                          mov     edx, 604008FEh
@@ -92,6 +94,7 @@ def get_xor_cookie(sample_data:bytearray):
         xor_keys.append(xor_cookie)
 
     return xor_keys
+
 
 def extract_offsets_size_stage_2(sample_data:bytearray):
     # 66 8c e8 66 85 c0
@@ -149,6 +152,7 @@ def extract_affiliate_id_from_stage_2(sample_data:bytearray):
         affiliate_id = None
 
     return affiliate_id
+
 
 def extract_version(sample_data:bytearray):
     version_compare = (
