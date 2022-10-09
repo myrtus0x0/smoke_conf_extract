@@ -12,8 +12,8 @@ This project aims to extrct configurations from smokeloader samples starting at 
 - config extraction
 
 ## TO-DO 
-- [] LZSA decompression in python
-- [] 100% accuracy with affiliate ID extraction
+- [ ] LZSA decompression in python
+- [ ] 100% accuracy with affiliate ID extraction
 
 ## Projects used 
 - [Unicorn Emulator](https://www.unicorn-engine.org) - for emulating the decompression function
