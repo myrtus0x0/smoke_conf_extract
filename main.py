@@ -8,6 +8,7 @@ import os
 import struct
 import sys
 from itertools import cycle
+from contextlib import suppress
 
 import pefile
 import structlog
@@ -73,10 +74,8 @@ def emulate_decompress_call(emulator:unicorn_pe_loader.InitUnicorn, start_func, 
     decompressed_addr = 0x70000000
 
     # ensure our given section is unmapped at start
-    try:
-        emulator.mu.mem_unmap(decompressed_addr, 32*1024)
-    except:
-        pass
+    with suppress(unicorn.UcError):
+        emulator.mu.mem_unmap(decompressed_addr, 32 * 1024)
 
     emulator.mu.mem_map(decompressed_addr, 32*1024)
     emulator.push_arg(decompressed_addr)
@@ -85,18 +84,13 @@ def emulate_decompress_call(emulator:unicorn_pe_loader.InitUnicorn, start_func, 
     compressed_addr = 0x80000000
 
     # ensure our given section is unmapped at start
-    try:
-        emulator.mu.mem_unmap(compressed_addr, 32*1024)
-    except:
-        pass
+    with suppress(unicorn.UcError):
+        emulator.mu.mem_unmap(compressed_addr, 32 * 1024)
 
     emulator.mu.mem_map(compressed_addr, 32*1024)
-
     emulator.mu.mem_write(compressed_addr, compressed_data)
     emulator.push_arg(compressed_addr)
-
     emulator.push_arg(0)
-
     emulator.init_regs()
 
     try:
