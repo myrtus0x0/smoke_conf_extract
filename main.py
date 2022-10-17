@@ -7,8 +7,8 @@ import math
 import os
 import struct
 import sys
+from itertools import cycle
 
-import malduck
 import pefile
 import structlog
 import unicorn
@@ -18,6 +18,11 @@ import deobfuscation
 import unicorn_pe_loader
 
 cur_dir = os.path.dirname(os.path.abspath(__file__))
+
+def xor(key, data):
+    if isinstance(key, int):
+        key = bytes([key])
+    return bytes([a ^ b for a, b in zip(data, cycle(key))])
 
 def estimate_shannon_entropy(dna_sequence):
     m = len(dna_sequence)
@@ -170,7 +175,6 @@ def get_payloads_from_stage_2(sample_data:bytearray, emulator:unicorn_pe_loader.
 
     return payloads
 
-
 def main(sample: str, destination: str = "", disable_logging: bool = False):
     logger = structlog.get_logger(__name__)
     if disable_logging:
@@ -186,7 +190,7 @@ def main(sample: str, destination: str = "", disable_logging: bool = False):
         logger.error("unable to deobfuscate PE file")
         return
 
-    just_xored_pe = malduck.xor(xor_cookie & 0xFF, smokeloader_unpacked_pe)
+    just_xored_pe = xor(xor_cookie & 0xFF, smokeloader_unpacked_pe)
     with open(os.path.join(destination, f"{os.path.basename(sample)}_fully_deobfuscated.bin"), "wb") as f:
         f.write(deobfuscated_pe)
 
@@ -201,7 +205,7 @@ def main(sample: str, destination: str = "", disable_logging: bool = False):
 
     for payload in payloads:
         logger.info("decrypting extracted PE with key", key="0x%x" % xor_cookie, len_pe=len(payload))
-        decrypted_stage_3 = malduck.xor(xor_cookie.to_bytes(4, "little"), payload)
+        decrypted_stage_3 = xor(xor_cookie.to_bytes(4, "little"), payload)
 
         decompressed_data = decompress_buffer(decompress_emulator, decrypted_stage_3)
         if decompressed_data is None:

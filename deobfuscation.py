@@ -2,12 +2,18 @@ import logging
 import re
 import struct
 import sys
+from itertools import cycle
 
-import malduck
 import pefile
 import structlog
 
 import pe_analysis
+
+
+def xor(key, data):
+    if isinstance(key, int):
+        key = bytes([key])
+    return bytes([a ^ b for a, b in zip(data, cycle(key))])
 
 
 def get_opaque_predicate_offsets(data, pe_rep):
@@ -31,14 +37,14 @@ def get_opaque_predicate_offsets(data, pe_rep):
         for match in matches:
             compare_1 = ord(match.group("compare_1"))
             compare_2 = ord(match.group("compare_2"))
-            
+
             if compare_1 - compare_2 != 2:
                 continue
 
             rva = pe_rep.OPTIONAL_HEADER.ImageBase + pe_rep.get_rva_from_offset(match.start())
             logger.info("opaque predicate found", rva="0x%x" % rva, first_comparison=compare_1, second_comparison=compare_2)
             offsets.append([match.start(), compare_1])
-    
+
     return offsets
 
 
@@ -46,17 +52,17 @@ def get_args_from_decrypt_body_call(data):
     found_addr = get_code_offset_arg_from_decrypt_body_call(data)
     if found_addr is None:
         return None, None
-    
+
     size = get_code_size_arg_from_decrypt_body_call(data, found_addr)
     if size is None:
         return None, None
-    
+
     return found_addr, size
 
 
 def get_code_offset_arg_from_decrypt_body_call(data):
     logger = structlog.get_logger(__name__)
-    
+
     push_addr_patterns = [
         (
             rb"\x68(?P<offset_base_addr>.{4})"  # .text:00401264 68 92 12 00 00                          push    1292h
@@ -78,14 +84,14 @@ def get_code_offset_arg_from_decrypt_body_call(data):
             offset = struct.unpack("I", group_match)[0]
             if offset > 0xFFFF:
                 continue
-            
+
             logger.debug("offset", offset="0x%x" % offset)
             return offset
 
 
 def get_code_size_arg_from_decrypt_body_call(data, address):
     logger = structlog.get_logger(__name__)
-    
+
     push_size_patterns = [
         (
             rb"\x68(?P<size_data>.{4})"     # .text:0040213D 68 8A 00 00 00                          push    8Ah
@@ -107,16 +113,16 @@ def get_code_size_arg_from_decrypt_body_call(data, address):
         matches = re.finditer(pattern, data)
         for match in matches:
             group_match = match.group("size_data")
-            
+
             # 1 byte push
             if len(group_match) == 1:
                 size = ord(group_match)
                 if size == address:
                     continue
-                
+
                 logger.debug("1 byte size", size="0x%x" % size)
                 return size
-            
+
             # 4 byte push
             elif len(group_match) == 4:
                 size = struct.unpack("I", group_match)[0]
@@ -137,17 +143,17 @@ def replace_ops(data, opaque_predicate_info):
         new_bytes.append(jmp_distance)
         for _ in range(num_bytes_to_nop):
             new_bytes.append(0x90)
-        
+
         data = data[:file_offset] + new_bytes + data[file_offset+len(new_bytes):]
-        
+
     return data
 
 
 def find_body_decryptor(data):
-     
+
     load_xor_operand_patterns = [
         (
-            rb"\x68(?P<xor_cookie>.{4})"    #.text:00401165 68 FE 08 40 60                          push    604008FEh                   
+            rb"\x68(?P<xor_cookie>.{4})"    #.text:00401165 68 FE 08 40 60                          push    604008FEh
             rb"\x5a"                        #.text:0040116A 5A                                    pop     edx
         ),
         (
@@ -163,7 +169,7 @@ def find_body_decryptor(data):
         for res in matches:
             body_decryptor = struct.unpack("I", res.group("xor_cookie"))[0]
             potential_decrypt_funcs.append((res.start(), body_decryptor))
-    
+
     return potential_decrypt_funcs
 
 
@@ -214,7 +220,7 @@ def bulk_decrypt_function_bodies(cleaned_pe, patched_filename, emulator):
             start_func = smokeloader_disas_rep.get_func_start(rva_body_decryptor)
             if start_func is None:
                 return None, None
-        
+
         logger.debug("decrypt body info", start="0x%x" % start_func, rva="0x%x" % rva_body_decryptor)
 
         calls_to_decrypt_body = smokeloader_disas_rep.get_xref_list(start_func)
@@ -223,11 +229,11 @@ def bulk_decrypt_function_bodies(cleaned_pe, patched_filename, emulator):
             correct_calls = calls_to_decrypt_body
             correct_xor_cookie = xor_cookie
             break
-    
+
     if len(calls_to_decrypt_body) == 0 or correct_xor_cookie == 0:
         logger.error("cant find func decrypt call")
         return None, None
-    
+
     logger.info("xor cookie", xor_key="0x%x" % correct_xor_cookie)
 
     decrypt_body_key = correct_xor_cookie & 0xFF
@@ -238,13 +244,13 @@ def bulk_decrypt_function_bodies(cleaned_pe, patched_filename, emulator):
         if rva_to_decrypt is None or size is None:
             logger.error("unable to recover args", xref_offset="0x%x" % call)
             continue
-        
+
         # adjust for base address
         rva_to_decrypt += 0x400000
         logger.info("decrypt function body call", key="0x%x" % decrypt_body_key, xref_offset="0x%x" % call, rva_to_decrypt_from="0x%x" % rva_to_decrypt, size_to_decrypt="0x%x" % size)
 
         data_to_decrypt = emulator.get_bytes(rva_to_decrypt, size)
-        decrypted_body = malduck.xor(decrypt_body_key, data_to_decrypt)
+        decrypted_body = xor(decrypt_body_key, data_to_decrypt)
 
         cleaned_pe = cleaned_pe.replace(data_to_decrypt, decrypted_body)
 

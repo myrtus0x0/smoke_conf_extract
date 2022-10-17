@@ -1,8 +1,21 @@
 import re
 import struct
 import sys
+from contextlib import suppress
 
-import malduck
+HAVE_MALDUCK = False
+HAVE_PYCRYPTODOTMEX = False
+
+with suppress(ImportError):
+    import malduck
+    HAVE_MALDUCK = True
+
+with suppress(ImportError):
+    from Crypto.Cipher import ARC4
+    ARC4.key_size = range(1, 257)
+    HAVE_PYCRYPTODOTMEX = True
+
+
 import structlog
 
 shellcode_base_addr = 0x10000C00
@@ -23,7 +36,7 @@ def extract_decrypt_key(stage_3_shellcode):
     for match in results:
         potential_key = struct.unpack("I", match.group("decrypt_key"))[0]
         keys.append(potential_key)
-    
+
     return keys
 
 
@@ -40,7 +53,7 @@ def extract_encrypt_key(stage_3_shellcode):
     for match in results:
         potential_key = struct.unpack("I", match.group("encrypt_key"))[0]
         keys.append(potential_key)
-    
+
     return keys
 
 
@@ -62,14 +75,17 @@ def extract_c2_buffers(stage_3_shellcode):
             c2_addr = stage_3_shellcode[addr_list:addr_list+4]
             if c2_addr == b"\x00\x00\x00\x00":
                 break
-            
+
             c2_addr = struct.unpack("I", c2_addr)[0] - shellcode_base_addr
             if c2_addr > len(stage_3_shellcode) - 4:
                 break
 
             len_c2 = stage_3_shellcode[c2_addr]
             rc4_key = stage_3_shellcode[c2_addr+1:c2_addr+5]
-            c2 = malduck.rc4(rc4_key, stage_3_shellcode[c2_addr+5:c2_addr+5+len_c2]).decode("utf-8")
+            if HAVE_MALDUCK:
+                c2 = malduck.rc4(rc4_key, stage_3_shellcode[c2_addr+5:c2_addr+5+len_c2]).decode("utf-8")
+            elif HAVE_PYCRYPTODOTMEX:
+                c2 = ARC4.new(rc4_key).decrypt(stage_3_shellcode[c2_addr+5:c2_addr+5+len_c2]).decode("utf-8")
             c2s.append(c2)
 
             addr_list += 4
@@ -103,7 +119,7 @@ def extract_offsets_size_stage_2(sample_data:bytearray):
         rb"\x66\x8c\xe8" # .text:00402B26 66 8C E8                                mov     ax, gs
         rb"\x66\x85\xc0" # .text:00402B29 66 85 C0                                test    ax, ax
     )
-    
+
     stage_3_regex = [
         (
             rb"\x8d.(?P<offset>.{4})"   # .text:00402B2E 8D 83 68 2F 00 00                       lea     eax, [ebx+2F68h]
@@ -118,9 +134,9 @@ def extract_offsets_size_stage_2(sample_data:bytearray):
     matches = re.finditer(arch_check_regex, sample_data, re.DOTALL)
     for match in matches:
         windowed_data = sample_data[match.start():match.start()+0x100]
-    
+
         logger.debug("arch check offset", start="0x%x" % match.start())
-        
+
         for pattern in stage_3_regex:
             results = re.finditer(pattern, windowed_data, re.DOTALL)
 
@@ -167,16 +183,16 @@ def extract_version(sample_data:bytearray):
         version_year = struct.unpack("I", match.group("version"))[0]
         if version_year > 0xFFFF:
             continue
-        
+
         return version_year
-    
+
     return version_year
-    
+
 
 def main():
     with open(sys.argv[1], "rb") as f:
         smoke_stage_3 = f.read()
-    
+
     c2s = extract_c2_buffers(smoke_stage_3)
     for c2 in c2s:
         print("c2: %s" % c2)
@@ -185,12 +201,12 @@ def main():
     for decrypt_key in decrypt_keys:
         if decrypt_key in encrypt_keys:
             encrypt_keys.remove(decrypt_key)
-    
+
     if len(encrypt_keys) == 1 and len(decrypt_keys) == 1:
         print("encrypt key: 0x%x" % encrypt_keys[0])
         print("decrypt key: 0x%x" % decrypt_keys[0])
 
-    
+
 
 if __name__ == "__main__":
     main()
