@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import math
+import os
 import struct
 import sys
 
@@ -16,18 +17,19 @@ import conf_extract
 import deobfuscation
 import unicorn_pe_loader
 
+cur_dir = os.path.dirname(os.path.abspath(__file__))
 
 def estimate_shannon_entropy(dna_sequence):
     m = len(dna_sequence)
     bases = collections.Counter([tmp_base for tmp_base in dna_sequence])
- 
+
     shannon_entropy_value = 0
     for base in bases:
         n_i = bases[base]
         p_i = n_i / float(m)
         entropy_i = p_i * (math.log(p_i, 2))
         shannon_entropy_value += entropy_i
- 
+
     return shannon_entropy_value * -1
 
 def init_logger():
@@ -56,9 +58,9 @@ def init_logger():
 
 def emulate_decompress_call(emulator:unicorn_pe_loader.InitUnicorn, start_func, end_func, compressed_data, decompressed_size):
     logger = structlog.get_logger(__name__)
-    
+
     logger.info("starting emulation", start_addr="0x%x" % start_func, end_func="0x%x" % end_func)
-    
+
     # reset stack
     logger.info("setting stack and regs")
     emulator.create_stack()
@@ -73,7 +75,7 @@ def emulate_decompress_call(emulator:unicorn_pe_loader.InitUnicorn, start_func, 
 
     emulator.mu.mem_map(decompressed_addr, 32*1024)
     emulator.push_arg(decompressed_addr)
-    
+
     # write our data to be decompressed
     compressed_addr = 0x80000000
 
@@ -84,10 +86,10 @@ def emulate_decompress_call(emulator:unicorn_pe_loader.InitUnicorn, start_func, 
         pass
 
     emulator.mu.mem_map(compressed_addr, 32*1024)
-    
+
     emulator.mu.mem_write(compressed_addr, compressed_data)
     emulator.push_arg(compressed_addr)
-    
+
     emulator.push_arg(0)
 
     emulator.init_regs()
@@ -98,7 +100,7 @@ def emulate_decompress_call(emulator:unicorn_pe_loader.InitUnicorn, start_func, 
         logger.error("error during emulation", error=e)
         decompressed_data = emulator.mu.mem_read(decompressed_addr, decompressed_size)
         return decompressed_data
-    
+
     decompressed_data = emulator.mu.mem_read(decompressed_addr, decompressed_size)
     return decompressed_data
 
@@ -108,7 +110,7 @@ def decompress_buffer(emulator:unicorn_pe_loader.InitUnicorn, decrypted_stage_3)
 
     decompressed_size = struct.unpack("I", decrypted_stage_3[:4])[0]
     logger.info("decompressed info", decompressed_size="0x%x" % decompressed_size)
-    
+
     decrypted_stage_3 = decrypted_stage_3[4:]
     start_func = 0x00401258
     end_func = 0x0040137E
@@ -122,18 +124,18 @@ def deobfuscate_unpacked_smokeloader(sample_data:bytearray, emulator:unicorn_pe_
 
     opaque_predicate_info = deobfuscation.get_opaque_predicate_offsets(sample_data, pe_rep)
     cleaned_pe = deobfuscation.replace_ops(sample_data, opaque_predicate_info)
-   
+
     patched_filename = sample_path.split(".")[0] + "_no_opaque_predicates.bin"
     with open(patched_filename, "wb") as f:
         f.write(cleaned_pe)
-    
+
     cleaned_pe_rep = pefile.PE(data=cleaned_pe)
-    
+
     # decrypt the function bodies
     decrypted_bodies_pe, xor_cookie = deobfuscation.bulk_decrypt_function_bodies(cleaned_pe, patched_filename, emulator)
     if decrypted_bodies_pe is None:
         return None, None
-    
+
     # remove another set of opaque predicates
     opaque_predicate_info = deobfuscation.get_opaque_predicate_offsets(decrypted_bodies_pe, cleaned_pe_rep)
     decrypted_bodies_pe = deobfuscation.replace_ops(decrypted_bodies_pe, opaque_predicate_info)
@@ -142,7 +144,7 @@ def deobfuscate_unpacked_smokeloader(sample_data:bytearray, emulator:unicorn_pe_
 
 
 def get_payloads_from_stage_2(sample_data:bytearray, emulator:unicorn_pe_loader.InitUnicorn, xored_pe):
-    # xored_pe is the entire PE file XOR crypted with the single byte key. This ensures all the function bodies 
+    # xored_pe is the entire PE file XOR crypted with the single byte key. This ensures all the function bodies
     # are decrypted and we can identify the offsets
     logger = structlog.get_logger(__name__)
 
@@ -158,7 +160,7 @@ def get_payloads_from_stage_2(sample_data:bytearray, emulator:unicorn_pe_loader.
         except:
             logger.error("unable to get payload", rva="0x%x" % offset)
             continue
-        
+
         entropy_payload = estimate_shannon_entropy(payload)
         if entropy_payload < 7.9:
             logger.error("data most likely isn't our payload", offset="0x%x" % offset, size="0x%x" % size, entropy="%lf" % entropy_payload)
@@ -169,30 +171,23 @@ def get_payloads_from_stage_2(sample_data:bytearray, emulator:unicorn_pe_loader.
     return payloads
 
 
-parser = argparse.ArgumentParser(description='Smoke Conf Extract')
-parser.add_argument('--json', action='store_true')
-parser.add_argument('sample')
-
-
-def main():
+def main(sample: str, destination: str = "", disable_logging: bool = False):
     logger = structlog.get_logger(__name__)
-    init_logger() 
+    if disable_logging:
+        init_logger()
 
-    args = parser.parse_args()
-
-    with open(args.sample, "rb") as f:
+    with open(sample, "rb") as f:
         smokeloader_unpacked_pe = f.read()
-    
+
     emulator = unicorn_pe_loader.InitUnicorn(smokeloader_unpacked_pe, logger, type_pe=True, bit=32, debug=False)
 
-    deobfuscated_pe, xor_cookie = deobfuscate_unpacked_smokeloader(smokeloader_unpacked_pe, emulator, args.sample)
+    deobfuscated_pe, xor_cookie = deobfuscate_unpacked_smokeloader(smokeloader_unpacked_pe, emulator, sample)
     if deobfuscated_pe is None:
         logger.error("unable to deobfuscate PE file")
-        return 
-    
-    just_xored_pe = malduck.xor(xor_cookie & 0xFF, smokeloader_unpacked_pe)
+        return
 
-    with open(args.sample + "_fully_deobfuscated.bin", "wb") as f:
+    just_xored_pe = malduck.xor(xor_cookie & 0xFF, smokeloader_unpacked_pe)
+    with open(os.path.join(destination, f"{os.path.basename(sample)}_fully_deobfuscated.bin"), "wb") as f:
         f.write(deobfuscated_pe)
 
     payloads = get_payloads_from_stage_2(deobfuscated_pe, emulator, just_xored_pe)
@@ -200,7 +195,7 @@ def main():
         logger.error("unable to extract final stage")
         return
 
-    with open("./decompress_client.pe_file", "rb") as f:
+    with open(os.path.join(cur_dir, "decompress_client.pe_file"), "rb") as f:
         decompress_client = f.read()
     decompress_emulator = unicorn_pe_loader.InitUnicorn(decompress_client, logger, type_pe=True, bit=32, debug=False)
 
@@ -211,17 +206,17 @@ def main():
         decompressed_data = decompress_buffer(decompress_emulator, decrypted_stage_3)
         if decompressed_data is None:
             logger.error("unable to decompress data")
-            return 
-        
-    
+            return
+
+
         stage_3_hash = hashlib.md5(decompressed_data).hexdigest()
         entropy = estimate_shannon_entropy(decompressed_data)
         if entropy < 5 or entropy > 7:
             logger.error("unable to decompress final stage", entropy=entropy, size="0x%x" % len(decompressed_data), hash_stage_3=stage_3_hash)
             continue
         logger.info("successfully decompressed stage 3", size="0x%x" % len(decompressed_data), hash_stage_3=stage_3_hash, new_entropy="%lf" % entropy)
-    
-        with open(stage_3_hash + ".bin", "wb") as f:
+
+        with open(os.path.join(destination, stage_3_hash+ ".bin"), "wb") as f:
             f.write(decompressed_data)
 
         affiliate_id = conf_extract.extract_affiliate_id_from_stage_2(deobfuscated_pe)
@@ -237,27 +232,30 @@ def main():
         for decrypt_key in decrypt_keys:
             if decrypt_key in encrypt_keys:
                 encrypt_keys.remove(decrypt_key)
-        
+
         if len(encrypt_keys) == 1 and len(decrypt_keys) == 1:
             logger.info("RC4 keys", encrypt_key="0x%x" % encrypt_keys[0], decrypt_key="0x%x" % decrypt_keys[0])
 
         version = conf_extract.extract_version(decompressed_data)
         logger.info("version info", version=version)
         if len(c2s) > 0:
-            config = json.dumps({
+            return {
                 "family": "smokeloader",
                 "c2s": c2s,
                 "networkEncryptionKey": "%x" % encrypt_keys[0],
                 "networkDecryptionKey": "%x" % decrypt_keys[0],
                 "affiliateID": affiliate_id,
                 "version": version
-            }, indent=" " * 4)
-        
-        break
-    
-    if args.json:
-        print(config)
+            }
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description='Smoke Conf Extract')
+    parser.add_argument('--json', action='store_true')
+    parser.add_argument('--destination', action='store', default="", type=str, help="Destination folder where to store extracted files")
+    parser.add_argument('--disable-logging', action='store_true', default=False)
+    parser.add_argument('sample')
+    args = parser.parse_args()
+    config = main(args.sample, args.destination, args.disable_logging)
+    if args.json:
+        print(json.dumps(config, indent=" " * 4))

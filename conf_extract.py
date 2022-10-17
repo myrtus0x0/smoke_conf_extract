@@ -1,7 +1,8 @@
-import malduck
 import re
-import sys
 import struct
+import sys
+
+import malduck
 import structlog
 
 shellcode_base_addr = 0x10000C00
