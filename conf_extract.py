@@ -4,7 +4,7 @@ import sys
 from contextlib import suppress
 
 HAVE_MALDUCK = False
-HAVE_PYCRYPTODOTMEX = False
+HAVE_PYCRYPTODOMEX = False
 
 with suppress(ImportError):
     import malduck
@@ -13,7 +13,7 @@ with suppress(ImportError):
 with suppress(ImportError):
     from Crypto.Cipher import ARC4
     ARC4.key_size = range(1, 257)
-    HAVE_PYCRYPTODOTMEX = True
+    HAVE_PYCRYPTODOMEX = True
 
 
 import structlog
@@ -84,7 +84,7 @@ def extract_c2_buffers(stage_3_shellcode):
             rc4_key = stage_3_shellcode[c2_addr+1:c2_addr+5]
             if HAVE_MALDUCK:
                 c2 = malduck.rc4(rc4_key, stage_3_shellcode[c2_addr+5:c2_addr+5+len_c2]).decode("utf-8")
-            elif HAVE_PYCRYPTODOTMEX:
+            elif HAVE_PYCRYPTODOMEX:
                 c2 = ARC4.new(rc4_key).decrypt(stage_3_shellcode[c2_addr+5:c2_addr+5+len_c2]).decode("utf-8")
             c2s.append(c2)
 
